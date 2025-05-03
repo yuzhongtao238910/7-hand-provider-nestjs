@@ -1,12 +1,17 @@
 import "reflect-metadata"
-
+import { INJECTED_TOKENS, DESGIN_PARAMTYPES } from "@nestjs/common"
 import { Logger } from "./logger";
 import express, { Express, Request as ExpressRequest, Response as ExpressResponse, 
     NextFunction  } from "express"
 import path from "path"
+import { LoggerService } from "src/logger.service";
+import { UseValueService } from "src/useValue.service";
 export class NestApplication {
     // 在内部私有化一个express实例
     private readonly app: Express = express()
+
+    // 在此处保存全部的providers
+    private readonly providers = new Map()
 
     use(middleware) {
         this.app.use(middleware)
@@ -28,18 +33,95 @@ export class NestApplication {
             }
             next()
         })
+        // 注册Providers
+        this.initProviders()
+    }
+
+    private initProviders() {
+        const providers = Reflect.getOwnMetadata("providers", this.module) || []
+
+       
+        for (const provider of providers) {
+            // 如果provider是一个类
+            if (provider.provide && provider.useClass) {
+                /*
+                    {
+                        provide: LoggerService,
+                        useClass: LoggerService
+                    },
+                */
+               // 创建类的实例
+               const classInstance = new provider.useClass() // 此处尚未完成，因为这个类可能还是会有依赖的
+               // 把provider的token和类的实例保存到this.providers里面
+               this.providers.set(provider.provide, classInstance)
+            } else if (provider.provide && provider.useValue) {
+                /*
+                    {
+                        // 这个也是一种定义provider的方法
+                        provide: "StringToken", // 这是一个token，标志、令牌，也就是provider的名字
+                        useValue: new UseValueService() // 可以直接提供一个值
+                    }
+                */
+                // 提供的是一个类
+                this.providers.set(provider.provide, provider.useValue)
+            } else if (provider.provide && provider.useFactory) {
+                // useFactory里面可能会有参数。稍微会说哈
+                this.providers.set(provider.provide, provider.useFactory())
+            } else {
+                // 表示值提供了一个类，token是这个类，值是这个类的实例
+                this.providers.set(provider, new provider())
+            }
+        }
+
+
+        console.log(this.providers, 38)
+    }
+
+    private resolveDependencies(Controller) {
+
+        
+        
+        // 取得注入的token
+        const injectedTokens = Reflect.getMetadata(INJECTED_TOKENS, Controller) ?? []
+
+        // 获取构造函数的参数的类型
+        const constructorParams = Reflect.getMetadata(DESGIN_PARAMTYPES, Controller)
+
+        return constructorParams?.map((param, index) => {
+            // 把每个param之中的token默认转换成对应的provider的值
+            // if (index === 0) {
+            //     return new LoggerService()
+            // }
+            // if (index === 1) {
+            //     return new UseValueService()
+            // }
+            // return 1;
+
+            // return 
+            // TODO
+            return this.providers.get(injectedTokens[index] ?? param)
+
+        }) || []
     }
 
     async init() {
         // 取出模块之中的所有的控制器，然后做好路由配置
         // 初始化Nestjs
         const controllers = Reflect.getOwnMetadata("controllers", this.module) || []
+        
+
         Logger.log(`AppModule dependencies initialized`, "InstanceLoader")
         // 遍历controllers
         for (const Controller of controllers) {
 
+            const dependencies = this.resolveDependencies(Controller)
+
+            
+
+            // console.log(res, "res")
+            // providers.filter(provider => r)
             // 创建控制器实例
-            const controller = new Controller()
+            const controller = new Controller(...dependencies)
             // 获取控制器类的路径前缀
             const prefix = Reflect.getOwnMetadata("prefix", Controller) || ''
             // 开始路由解析

@@ -1,7 +1,8 @@
 import "reflect-metadata"
 
 interface ModuleMetadata {
-    controllers: Function[]
+    controllers?: Function[]
+    providers?: any[]
 }
 
 // 定义模块装饰器
@@ -11,6 +12,9 @@ export function Module(metadata: ModuleMetadata): ClassDecorator {
         // 给模块类添加元数据
         // target === AppModule
         Reflect.defineMetadata("controllers", metadata.controllers, target)
+
+        // 给模块类添加元数据providers: metadata.providers
+        Reflect.defineMetadata("providers", metadata.providers, target)
     }
 }
 

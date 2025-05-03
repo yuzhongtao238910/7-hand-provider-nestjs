@@ -42,8 +42,9 @@ export class UserController {
 
     // 处理会话
     @Get("session")
-    handleSession(@Session() session: any, @Session("pageView") pageView: any) {
-        console.log(session, pageView, "+++")
+    // handleSession(@Session() session: any, @Session("pageView") pageView: any) {
+    handleSession(@Session() session: any) {
+        // console.log(session, pageView, "+++")
         if (session.pageView) {
             session.pageView++
         } else {
