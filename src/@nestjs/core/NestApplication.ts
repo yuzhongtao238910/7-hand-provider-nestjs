@@ -44,6 +44,9 @@ export class NestApplication {
         for (const provider of providers) {
             // 如果provider是一个类
             if (provider.provide && provider.useClass) {
+
+                const dependencies = this.resolveDependencies(provider.useClass)
+
                 /*
                     {
                         provide: LoggerService,
@@ -51,7 +54,7 @@ export class NestApplication {
                     },
                 */
                // 创建类的实例
-               const classInstance = new provider.useClass() // 此处尚未完成，因为这个类可能还是会有依赖的
+               const classInstance = new provider.useClass(...dependencies) // 此处尚未完成，因为这个类可能还是会有依赖的
                // 把provider的token和类的实例保存到this.providers里面
                this.providers.set(provider.provide, classInstance)
             } else if (provider.provide && provider.useValue) {
@@ -65,27 +68,37 @@ export class NestApplication {
                 // 提供的是一个类
                 this.providers.set(provider.provide, provider.useValue)
             } else if (provider.provide && provider.useFactory) {
-                // useFactory里面可能会有参数。稍微会说哈
-                this.providers.set(provider.provide, provider.useFactory())
+                const inject = provider.inject ?? []
+                const injectedValues = inject.map(injectedToken => {
+                    return this.getProviderByToken(injectedToken)
+                })
+                this.providers.set(provider.provide, provider.useFactory(...injectedValues))
             } else {
                 // 表示值提供了一个类，token是这个类，值是这个类的实例
-                this.providers.set(provider, new provider())
+
+                const dependencies = this.resolveDependencies(provider)
+
+                this.providers.set(provider, new provider(...dependencies))
             }
         }
 
-
-        console.log(this.providers, 38)
     }
 
-    private resolveDependencies(Controller) {
 
-        
+    // 如果是注入的token就在this.providers里面去寻找，如果不是注入的token，那么就原路返回
+    private getProviderByToken(injectedToken) {
+        return this.providers.get(injectedToken) ?? injectedToken
+    }
+
+    private resolveDependencies(Class) {
         
         // 取得注入的token
-        const injectedTokens = Reflect.getMetadata(INJECTED_TOKENS, Controller) ?? []
+        const injectedTokens = Reflect.getMetadata(INJECTED_TOKENS, Class) ?? []
 
         // 获取构造函数的参数的类型
-        const constructorParams = Reflect.getMetadata(DESGIN_PARAMTYPES, Controller)
+        const constructorParams = Reflect.getMetadata(DESGIN_PARAMTYPES, Class)
+
+
 
         return constructorParams?.map((param, index) => {
             // 把每个param之中的token默认转换成对应的provider的值
@@ -99,7 +112,9 @@ export class NestApplication {
 
             // return 
             // TODO
-            return this.providers.get(injectedTokens[index] ?? param)
+            // return this.providers.get(injectedTokens[index] ?? param)
+
+            return this.getProviderByToken(injectedTokens[index] ?? param)
 
         }) || []
     }
@@ -118,7 +133,6 @@ export class NestApplication {
 
             
 
-            // console.log(res, "res")
             // providers.filter(provider => r)
             // 创建控制器实例
             const controller = new Controller(...dependencies)
@@ -130,7 +144,7 @@ export class NestApplication {
             const controllerPrototype = Reflect.getPrototypeOf(controller)
 
             for (const methodName of Object.getOwnPropertyNames(controllerPrototype)) {
-                // console.log(methodName)
+
                 const method = controllerPrototype[methodName]
                 // 获取此函数上绑定的方法名字的元数据
                 const httpMethod = Reflect.getMetadata("method", method)
@@ -251,7 +265,6 @@ export class NestApplication {
                 case "Next":
                     return next
                 case "DecoratorFactory":
-                    console.log(data, "162", data)
                     return factory(data, context)
                     // return req.user
                 default:
@@ -274,14 +287,9 @@ export class NestApplication {
 
 
     getResponseMetadata(controller, methodName) {
-        // console.log(methodName, "methodName")
         const metaData =Reflect.getMetadata("params", Reflect.getPrototypeOf(controller), methodName) || []
-        // console.log(metaData,"metaData")
 
         const metaData1 =Reflect.getMetadata("params", controller, methodName) || []
-        // console.log(metaData1, "metaData1")
-
-        // console.log(Reflect.getOwnMetadata("params", controller, methodName), "own")
         return metaData.filter(Boolean).find(item => item.key === 'Res' || item.key === 'Response' || item.key === "Next")
     }
 }
